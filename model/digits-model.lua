@@ -2,15 +2,7 @@
 -- return function that returns network definition
 return function(params)
     -- get number of classes from external parameters
-    local nclasses = params.nclasses or 1
-
-    -- get number of channels from external parameters
-    local channels = 1
-    -- params.inputShape may be nil during visualization
-    if params.inputShape then
-        channels = params.inputShape[1]
-        assert(params.inputShape[2]==28 and params.inputShape[3]==28, 'Network expects 28x28 images')
-    end
+    local nclasses = 14 -- params.nclasses or 1
 
     if pcall(function() require('cudnn') end) then
        print('Using CuDNN backend')
@@ -34,26 +26,26 @@ return function(params)
 
     local net = nn.Sequential()
     -- alphabet_len x 1014
-    net:add(nn.TemporalConvolution(alphabet_len, 256, 7))
+    net:add(backend.TemporalConvolution(alphabet_len, 256, 7))
     net:add(nn.Threshold())
-    net:add(nn.TemporalMaxPooling(3, 3)
+    net:add(nn.TemporalMaxPooling(3, 3))
     -- 336 x 256
-    net:add(nn.TemporalConvolution, 256, 256, 7))
+    net:add(backend.TemporalConvolution(256, 256, 7))
     net:add(nn.Threshold())
-    net:add(nn.TemporalMaxPooling(3, 3)
+    net:add(nn.TemporalMaxPooling(3, 3))
     -- 110 x 256
-    net:add(nn.TemporalConvolution, 256, 256, 3))
+    net:add(backend.TemporalConvolution(256, 256, 3))
     net:add(nn.Threshold())
     -- 108 x 256
-    net:add(nn.TemporalConvolution, 256, 256, 3))
+    net:add(backend.TemporalConvolution(256, 256, 3))
     net:add(nn.Threshold())
     -- 106 x 256
-    net:add(nn.TemporalConvolution, 256, 256, 3))
+    net:add(backend.TemporalConvolution(256, 256, 3))
     net:add(nn.Threshold())
     -- 104 x 256
-    net:add(nn.TemporalConvolution, 256, 256, 3))
+    net:add(backend.TemporalConvolution(256, 256, 3))
     net:add(nn.Threshold())
-    net:add(nn.TemporalMaxPooling(3, 3)
+    net:add(nn.TemporalMaxPooling(3, 3))
     -- 34 x 256
     net:add(nn.Reshape(8704))
     -- 8704
@@ -65,12 +57,27 @@ return function(params)
     net:add(nn.Threshold())
     net:add(nn.Dropout(0.5))
     -- 1024
-    net:add(nn.Linear(1024, nclasses))
-    net:add(nn.Threshold())
-    net:add(nn.Dropout(0.5))
-    net:add(nn.LogSoftMax())
+    net:add(nn.Linear(1024, 14))
+    net:add(backend.LogSoftMax())
+
+    -- weight initialization
+    local w,dw = net:getParameters()
+    w:normal():mul(5e-2)
 
     local function oneHotEncoder(input)
+        local bs = input:size(1)
+        local featureLen = input:size(2)
+        local featureWidth = alphabet_len
+        local output = torch.FloatTensor(bs, featureLen, featureWidth):zero()
+        for n=1,bs do
+            for f=1,featureLen do
+                local c = input[n][f][1][1]
+                if c > 0 then
+                    output[n][f][c] = 1
+                end
+            end
+        end
+        return output
     end
 
     return {
