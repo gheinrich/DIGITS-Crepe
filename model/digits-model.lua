@@ -85,7 +85,7 @@ return function(params)
         loss = nn.ClassNLLCriterion(),
         inputHook = oneHotEncoder,
         trainBatchSize = 128,
-        validationBatchSize = 128,
+        validationBatchSize = 256,
     }
 end
 
