@@ -59,7 +59,7 @@ def create_lmdbs(folder, input_file_name, db_batch_size=None):
             sample = class_samples[c][idx].astype('uint8')
             sample = sample[..., np.newaxis, np.newaxis]
             datum = caffe.io.array_to_datum(sample, c)
-            batch.append(('%d_%d' % (c, idx), datum))
+            batch.append(('%d_%d' % (idx,c), datum))
         if len(batch) >= DB_BATCH_SIZE:
             _write_batch_to_lmdb(output_db, batch)
             batch = []
