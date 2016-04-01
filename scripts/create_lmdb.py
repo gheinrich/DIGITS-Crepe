@@ -6,6 +6,7 @@ Functions for creating temporary LMDBs
 
 import argparse
 import caffe
+import csv
 from collections import defaultdict
 import h5py
 import lmdb
@@ -26,6 +27,9 @@ except ImportError:
 
 DB_BATCH_SIZE = 1024
 
+ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789-,;.!?:'\"/\\|_@#$%^&*~`+-=<>()[]{}"
+FEATURE_LEN = 1014
+
 def create_lmdbs(folder, input_file_name, db_batch_size=None):
     """
     Creates LMDBs
@@ -34,24 +38,61 @@ def create_lmdbs(folder, input_file_name, db_batch_size=None):
     if db_batch_size is None:
         db_batch_size = DB_BATCH_SIZE
 
-    # open input HDF5
-    input_db = h5py.File(input_file_name)
+    input_db = None
     # open output LMDB
     output_db = lmdb.open(folder, map_async=True, max_dbs=0)
-
-    classes = input_db['classes'].keys()
-    class_samples = []
-    samples_per_class = None
-    for c in classes:
-        t = input_db['classes'][c]['data'][...]
-        if samples_per_class is None:
-            samples_per_class = t.shape[0]
-        else:
-            assert(samples_per_class == t.shape[0])
-        class_samples.append(t)
+    
+    if input_file_name.endswith('.hdf5'):
+        # open input HDF5
+        input_db = h5py.File(input_file_name)    
+        class_samples = []
+        classes = input_db['classes'].keys()
+        samples_per_class = None
+        for c in classes:
+            t = input_db['classes'][c]['data'][...]
+            if samples_per_class is None:
+                samples_per_class = t.shape[0]
+            else:
+                assert(samples_per_class == t.shape[0])
+            class_samples.append(t)
+    elif input_file_name.endswith('.csv'):
+        # create character dict
+        cdict = {}
+        for i,c in enumerate(ALPHABET):
+            cdict[c] = i
+        samples = {}
+        with open(input_file_name) as f:
+            reader = csv.DictReader(f,fieldnames=['class'],restkey='fields')
+            for row in reader:
+                label = row['class']
+                if label not in samples:
+                    samples[label] = []
+                sample = np.zeros(FEATURE_LEN)
+                count = 0
+                for field in row['fields']:
+                    for char in field.lower():
+                        if char in cdict:
+                            sample[count] = cdict[char]
+                        count += 1
+                        if count >= FEATURE_LEN-1:
+                            break
+                samples[label].append(sample)
+            samples_per_class = None
+            classes = samples.keys()
+            class_samples = []
+            for c in classes:
+                if samples_per_class is None:
+                    samples_per_class = len(samples[c])
+                else:
+                    assert(samples_per_class == len(samples[c]))
+                class_samples.append(samples[c])
+    else:
+        assert False, 'unknown extension'
 
     indices = np.arange(samples_per_class)
     np.random.shuffle(indices)
+
+    print classes
 
     batch = []
     for idx in indices:
@@ -65,7 +106,8 @@ def create_lmdbs(folder, input_file_name, db_batch_size=None):
             batch = []
 
     # close databases
-    input_db.close()
+    if input_db is not None:
+        input_db.close()
     output_db.close()
 
     return
